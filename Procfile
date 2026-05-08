@@ -1,0 +1,1 @@
+web: python manage.py migrate && gunicorn iot_rutas.wsgi --bind 0.0.0.0:$PORT
