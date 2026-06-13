@@ -95,7 +95,10 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_ALL_ORIGINS = False   # Producción: solo orígenes permitidos
 CORS_ALLOW_CREDENTIALS = True
 
-
+CSRF_TRUSTED_ORIGINS = [
+    'https://iotbackendv20-production-1ddc.up.railway.app',
+    'https://iotbackendv20-production.up.railway.app',
+]
 
 # ── REST Framework ────────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
