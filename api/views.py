@@ -1,10 +1,11 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+from math import radians, sin, cos, sqrt, atan2
 
 from .models import (
     Rol, UsuarioRol, Conductor, Ruta, Parada, RutaParada,
@@ -281,6 +282,125 @@ def ruta_con_paradas(request, pk):
     return Response(RutaDetalleSerializer(ruta).data)
 
 
+# ─── READING PÚBLICO para Arduino (sin JWT, usa identificador) ────────────────
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def post_reading_public(request):
+    identificador = request.data.get('identificador', '').strip().upper()
+    if not identificador:
+        return Response({'error': True, 'mensaje': 'Campo requerido: identificador'}, status=400)
+    try:
+        dispositivo = DispositivoIot.objects.get(identificador=identificador, activo=True)
+    except DispositivoIot.DoesNotExist:
+        return Response({'error': True, 'mensaje': 'Dispositivo no encontrado o inactivo'}, status=404)
+
+    data = request.data.copy()
+    data['dispositivo'] = dispositivo.id
+    serializer = UbicacionGpsSerializer(data=data)
+    if serializer.is_valid():
+        lectura = serializer.save()
+        dispositivo.ultima_conexion = timezone.now()
+        dispositivo.save(update_fields=['ultima_conexion'])
+
+        # ── Emitir por WebSocket ──────────────────────────────
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            "ubicaciones",
+            {
+                "type": "ubicacion_update",
+                "data": {
+                    "dispositivo_id":   dispositivo.id,
+                    "dispositivo_nombre": dispositivo.nombre,
+                    "identificador":    dispositivo.identificador,
+                    "latitud":          lectura.latitud,
+                    "longitud":         lectura.longitud,
+                    "velocidad":        lectura.velocidad,
+                    "timestamp":        lectura.timestamp.isoformat(),
+                    "vehiculo":         dispositivo.vehiculo.placa if dispositivo.vehiculo else None,
+                }
+            }
+        )
+        return Response({'mensaje': 'OK', 'lectura_id': lectura.id}, status=201)
+    return Response(serializer.errors, status=400)
+
+# ─── PARADA MÁS CERCANA (público) ─────────────────────────────────────────────
+@extend_schema(tags=['ubicacion'], summary="Encontrar la parada más cercana a una ubicación")
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def parada_cercana(request):
+    try:
+        lat = float(request.query_params.get('lat', ''))
+        lng = float(request.query_params.get('lng', ''))
+    except (ValueError, TypeError):
+        return Response({'error': True, 'mensaje': 'Parámetros requeridos: lat (float), lng (float)'}, status=400)
+    paradas = Parada.objects.all()
+    mejor = None
+    min_dist = float('inf')
+    R = 6371
+    for p in paradas:
+        dlat = radians(p.latitud - lat)
+        dlon = radians(p.longitud - lng)
+        a = sin(dlat/2)**2 + cos(radians(lat)) * cos(radians(p.latitud)) * sin(dlon/2)**2
+        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        dist = R * c
+        if dist < min_dist:
+            min_dist = dist
+            mejor = p
+    if not mejor:
+        return Response({'mensaje': 'No hay paradas registradas.'}, status=404)
+    rutas = Ruta.objects.filter(ruta_paradas__parada=mejor, activa=True).distinct()
+    return Response({
+        'parada': {
+            'id': mejor.id, 'nombre': mejor.nombre,
+            'latitud': mejor.latitud, 'longitud': mejor.longitud,
+            'descripcion': mejor.descripcion,
+        },
+        'distancia_km': round(min_dist, 3),
+        'distancia_m': round(min_dist * 1000, 1),
+        'rutas': [{'id': r.id, 'nombre': r.nombre} for r in rutas],
+    })
+
+
+# ─── DISPOSITIVOS ACTIVOS (admin) ──────────────────────────────────────────────
+@extend_schema(tags=['devices'], summary="Listar dispositivos con estado de conexión")
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dispositivos_activos(request):
+    dispositivos = DispositivoIot.objects.select_related('vehiculo').all()
+    resultado = []
+    for d in dispositivos:
+        ultima = UbicacionGps.objects.filter(dispositivo=d).order_by('-timestamp').first()
+        resultado.append({
+            'id': d.id, 'nombre': d.nombre, 'tipo': d.tipo,
+            'identificador': d.identificador, 'activo': d.activo,
+            'ultima_conexion': d.ultima_conexion,
+            'vehiculo_placa': d.vehiculo.placa if d.vehiculo else None,
+            'estado_conexion': DispositivoIotSerializer().get_estado_conexion(d),
+            'ultima_ubicacion': {
+                'latitud': ultima.latitud, 'longitud': ultima.longitud,
+                'velocidad_kmh': ultima.velocidad, 'timestamp': ultima.timestamp,
+            } if ultima else None,
+        })
+    return Response({'dispositivos': resultado})
+
+
+# ─── COORDENADAS DE RUTA PARA OSRM ────────────────────────────────────────────
+@extend_schema(tags=['rutas'], summary="Coordenadas ordenadas de una ruta para trazar recorrido")
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ruta_coordenadas(request, pk):
+    try:
+        ruta = Ruta.objects.prefetch_related('ruta_paradas__parada').get(pk=pk)
+    except Ruta.DoesNotExist:
+        return Response({'error': True, 'mensaje': 'Ruta no encontrada.'}, status=404)
+    paradas = ruta.ruta_paradas.select_related('parada').order_by('orden')
+    coords = [{'lat': rp.parada.latitud, 'lng': rp.parada.longitud, 'nombre': rp.parada.nombre, 'orden': rp.orden} for rp in paradas]
+    return Response({'id': ruta.id, 'nombre': ruta.nombre, 'paradas': coords})
+
+
 # ─── USUARIOS ─────────────────────────────────────────────────────────────────
 from django.contrib.auth.models import User
 from .serializers import (UsuarioSerializer, UsuarioCreateSerializer,
@@ -323,7 +443,6 @@ class PerfilUsuarioViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
 
-# ─── ENDPOINT ESPECIAL PARA ESTUDIANTES ──────────────────────────────────────
 # ─── ENDPOINT ESTUDIANTE ──────────────────────────────────────────────────────
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -349,12 +468,21 @@ def rutas_estudiante(request):
         ).select_related('conductor', 'vehiculo').first()
 
         conductor = None
+        vehiculo_id = None
         if asignacion and asignacion.conductor:
             conductor = {
                 'nombre': asignacion.conductor.nombre,
                 'telefono': asignacion.conductor.telefono,
                 'vehiculo': asignacion.vehiculo.placa if asignacion.vehiculo else '',
             }
+            vehiculo_id = asignacion.vehiculo.id if asignacion.vehiculo else None
+
+        dispositivos_online = []
+        if vehiculo_id:
+            dispositivos = DispositivoIot.objects.filter(vehiculo_id=vehiculo_id, activo=True)
+            for d in dispositivos:
+                if d.ultima_conexion and (timezone.now() - d.ultima_conexion).total_seconds() < 300:
+                    dispositivos_online.append(d.nombre)
 
         resultado.append({
             'id': ruta.id,
@@ -364,6 +492,8 @@ def rutas_estudiante(request):
             'total_paradas': len(paradas),
             'paradas': paradas,
             'conductor': conductor,
+            'operativa': len(dispositivos_online) > 0,
+            'dispositivos_online': dispositivos_online,
         })
 
     return Response({'rutas': resultado})

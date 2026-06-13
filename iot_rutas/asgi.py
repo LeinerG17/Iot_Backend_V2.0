@@ -8,9 +8,18 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
 """
 
 import os
-
-from django.core.asgi import get_asgi_application
-
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'iot_rutas.settings')
 
-application = get_asgi_application()
+from django.core.asgi import get_asgi_application
+django_asgi_app = get_asgi_application()  # ← debe inicializarse ANTES de importar consumers
+
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
+from api.routing import websocket_urlpatterns  # ← api.routing, no api
+
+application = ProtocolTypeRouter({
+    'http': django_asgi_app,
+    'websocket': AuthMiddlewareStack(
+        URLRouter(websocket_urlpatterns)
+    ),
+})

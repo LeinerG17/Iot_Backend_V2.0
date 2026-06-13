@@ -26,7 +26,17 @@ INSTALLED_APPS = [
     'django_filters',
     'corsheaders',
     'api',
+    'channels',
 ]
+
+ASGI_APPLICATION = 'iot_rutas.asgi.application'
+
+# Reemplaza el CHANNEL_LAYERS actual por esto:
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -58,16 +68,25 @@ WSGI_APPLICATION = 'iot_rutas.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME':     os.environ.get('MYSQLDATABASE', 'railway'),
-        'USER':     os.environ.get('MYSQLUSER',     'root'),
-        'PASSWORD': os.environ.get('MYSQLPASSWORD', ''),
-        'HOST':     os.environ.get('MYSQLHOST',     'localhost'),
-        'PORT':     os.environ.get('MYSQLPORT',     '3306'),
-        'OPTIONS':  {'charset': 'utf8mb4'},
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
+##DATABASES = {
+   ##  'ENGINE': 'django.db.backends.mysql',
+     #   'NAME':     os.environ.get('MYSQLDATABASE', 'railway'),
+   #     'USER':     os.environ.get('MYSQLUSER',     'root'),
+    #    'PASSWORD': os.environ.get('MYSQLPASSWORD', ''),
+     #   'HOST':     os.environ.get('MYSQLHOST',     'localhost'),
+      #  'PORT':     os.environ.get('MYSQLPORT',     '3306'),
+       # 'OPTIONS': {
+        #    'charset': 'utf8mb4',
+         #   'connect_timeout': 30,
+      #  },
+       # 'CONN_MAX_AGE': 0,
+   # }
+# }
 # ── CORS ─────────────────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',

@@ -218,6 +218,7 @@ class RutaDetalleSerializer(serializers.ModelSerializer):
 class VehiculoUbicacionSerializer(serializers.ModelSerializer):
     ultima_ubicacion = serializers.SerializerMethodField()
     estado_dispositivo = serializers.SerializerMethodField()
+    ruta_actual = serializers.SerializerMethodField()
 
     class Meta:
         model = Vehiculo
@@ -248,6 +249,19 @@ class VehiculoUbicacionSerializer(serializers.ModelSerializer):
         elif diff.total_seconds() < 300:
             return 'reciente'
         return 'desconectado'
+
+    def get_ruta_actual(self, obj):
+        from .models import AsignacionRuta
+        asignacion = AsignacionRuta.objects.filter(
+            vehiculo=obj, activa=True
+        ).select_related('ruta', 'conductor').first()
+        if asignacion:
+            return {
+                'id': asignacion.ruta.id,
+                'nombre': asignacion.ruta.nombre,
+                'conductor': asignacion.conductor.nombre if asignacion.conductor else None,
+            }
+        return None
 
 
 # ─── NUEVOS SERIALIZERS PARA EL FRONTEND ─────────────────────────────────────

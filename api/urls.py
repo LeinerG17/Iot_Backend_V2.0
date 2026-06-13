@@ -44,6 +44,16 @@ urlpatterns = [
     # ── ESPECIALES ───────────────────────────────────────────────
     path('ubicacion/tiempo-real/', views.ubicacion_tiempo_real),
     path('rutas/<int:pk>/paradas/', views.ruta_con_paradas),
+    path('rutas/<int:pk>/coordenadas/', views.ruta_coordenadas),
+
+    # ── READING PÚBLICO (Arduino) ────────────────────────────────
+    path('readings/public/', views.post_reading_public),
+
+    # ── PARADA CERCANA ───────────────────────────────────────────
+    path('parada-cercana/', views.parada_cercana),
+
+    # ── DISPOSITIVOS ACTIVOS ─────────────────────────────────────
+    path('dispositivos-activos/', views.dispositivos_activos),
 
     path('estudiante/rutas/', views.rutas_estudiante),
 ]
