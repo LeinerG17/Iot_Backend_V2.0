@@ -66,27 +66,23 @@ TEMPLATES = [{
 
 WSGI_APPLICATION = 'iot_rutas.wsgi.application'
 
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME':     os.environ.get('MYSQLDATABASE', 'railway'),
+        'USER':     os.environ.get('MYSQLUSER',     'root'),
+        'PASSWORD': os.environ.get('MYSQLPASSWORD', ''),
+        'HOST':     os.environ.get('MYSQLHOST',     'localhost'),
+        'PORT':     os.environ.get('MYSQLPORT',     '3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'connect_timeout': 30,
+        },
+        'CONN_MAX_AGE': 0,
     }
 }
 
-##DATABASES = {
-   ##  'ENGINE': 'django.db.backends.mysql',
-     #   'NAME':     os.environ.get('MYSQLDATABASE', 'railway'),
-   #     'USER':     os.environ.get('MYSQLUSER',     'root'),
-    #    'PASSWORD': os.environ.get('MYSQLPASSWORD', ''),
-     #   'HOST':     os.environ.get('MYSQLHOST',     'localhost'),
-      #  'PORT':     os.environ.get('MYSQLPORT',     '3306'),
-       # 'OPTIONS': {
-        #    'charset': 'utf8mb4',
-         #   'connect_timeout': 30,
-      #  },
-       # 'CONN_MAX_AGE': 0,
-   # }
-# }
 # ── CORS ─────────────────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
@@ -94,7 +90,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:4200',
     'http://127.0.0.1:4200',
     # Railway frontend
-    'https://iotfrontendv20-production.up.railway.app',
+    'https://iotfrontendv20-production-3be6.up.railway.app',
 ]
 CORS_ALLOW_ALL_ORIGINS = False   # Producción: solo orígenes permitidos
 CORS_ALLOW_CREDENTIALS = True
